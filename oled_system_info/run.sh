@@ -7,11 +7,6 @@ if [ ! -e "/dev/i2c-1" ]; then
     exit 1
 fi
 
-if [ ! -e "/dev/gpiochip0" ]; then
-    bashio::log.error "GPIO chip device /dev/gpiochip0 not found!"
-    exit 1
-fi
-
 bashio::log.info "Scanning I2C bus..."
 i2cdetect -y 1
 

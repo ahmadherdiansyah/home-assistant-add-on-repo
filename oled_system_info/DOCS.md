@@ -181,10 +181,6 @@ The `3c` shows your OLED is detected!
 ### Required Components
 
 - **SSD1306 OLED Display (128x32, I2C)** - [Example](https://www.aliexpress.com/item/1pcs-0-91-inch-OLED-module-0-91-white-OLED-128X32-OLED-LCD-LED-Display-Module/32672229793.html)
-- **Push button (6×6×7mm)** - [Example](https://www.aliexpress.com/item/100PCS-6X6x7mm-4PIN-dip-TACT-push-button-switch-Micro-key-power-tactile-switches-6x6x7-6-6/32854062885.html)
-- **3mm LED** (optional) - Any color
-- **10K resistor** - For button pull-up
-- **330Ω resistor** - For LED current limiting
 - **Jumper wires** - Female-to-female recommended
 
 ### Wiring Connections
@@ -201,22 +197,6 @@ The `3c` shows your OLED is detected!
 **Critical Notes:**
 - Use **3.3V power** only. 5V may damage some OLED modules.
 - SDA and SCL must connect to the designated I2C pins (GPIO 2 and GPIO 3)
-
-#### Button (Optional Control)
-
-| Component | Connection | Raspberry Pi Pin | GPIO # |
-|-----------|-----------|------------------|--------|
-| Button Pin 1 | GPIO 20 | 38 | GPIO 20 |
-| Button Pin 2 | Ground | 39 | - |
-| 10K Resistor | Between GPIO 20 and 3.3V | 1 & 38 | Pull-up |
-
-#### LED (Optional Indicator)
-
-| Component | Connection | Raspberry Pi Pin | GPIO # |
-|-----------|-----------|------------------|--------|
-| LED Anode (+) | Via 330Ω to GPIO 23 | 16 | GPIO 23 |
-| 330Ω Resistor | Between GPIO 23 and LED+ | - | Current limit |
-| LED Cathode (-) | Ground | 14 | - |
 
 **Complete Wiring:**
 For detailed wiring diagrams with resistor placement, see the [original project](https://github.com/leelooauto/system_info).
@@ -331,12 +311,7 @@ chip_type: BCM2835
 
 **On Startup:**
 1. Display shows "Infoscreen Started" for ~5 seconds
-2. Display goes into sleep mode (blank screen)
-
-**When Button Pressed:**
-1. Display wakes up
-2. Shows system information
-3. After 15 seconds of no button press, display sleeps again
+2. Display begins refreshing system information automatically
 
 ### System Information Shown
 
@@ -350,23 +325,6 @@ CPU : 25% | MEM: 45%
 - **IP**: Current IP address
 - **CPU**: Current CPU usage percentage
 - **MEM**: Current memory usage percentage
-
-### Button Controls
-
-| Action | Timing | Result |
-|--------|--------|--------|
-| Quick press | < 1 second | Wake display / Refresh info |
-| Hold button | 8+ seconds | Display shows "Reboot" message |
-| Release after "Reboot" | - | System reboots |
-| Hold button | 12+ seconds | Display shows "Shutdown" message |
-| Release after "Shutdown" | - | System shuts down |
-
-**Warning:** Reboot and shutdown affect your entire Home Assistant system!
-
-### LED Indicator (if wired)
-
-- **Solid ON**: Add-on is running normally
-- **OFF**: Add-on is stopped or error occurred
 
 ---
 
@@ -457,31 +415,6 @@ i2cdetect -y 1
 1. Go to add-on **Configuration** tab
 2. Verify board type matches your Raspberry Pi
 3. Save and restart add-on
-
-### Button Not Working
-
-**Test button connection:**
-
-```bash
-# Via SSH
-ssh -i ~/.ssh/homeassistant -p 22222 root@homeassistant.local
-
-# Install GPIO tools if needed
-apk add libgpiod
-
-# Monitor GPIO 20
-gpioget gpiochip0 20
-
-# Should show:
-# 1 when button NOT pressed (pull-up)
-# 0 when button IS pressed
-```
-
-**Common issues:**
-- Button on wrong GPIO pin (should be GPIO 20, pin 38)
-- Missing 10K pull-up resistor
-- Button is faulty
-- Wrong button type (needs momentary push button)
 
 ### Add-on Won't Build/Install
 
@@ -675,6 +608,4 @@ MIT License - See [LICENSE.md] for full license text.
 - **1.0.0**: Initial release
   - Support for Raspberry Pi 2, 3, 4, 5, Zero
   - I2C OLED display support
-  - GPIO button control
-  - Reboot/shutdown functionality
   - Auto-start on boot

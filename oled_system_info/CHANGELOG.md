@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0] - 2026-05-14
+
+### Added
+- Rotating display pages that switch every 10 seconds
+- Additional system stats for temperature, disk usage, and uptime
+- Compact CPU history graph on the OLED display
+
 ## [2.0.2] - 2025-02-04
 
 ### Fixed

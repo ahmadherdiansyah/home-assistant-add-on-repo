@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
 OLED System Info Display
-Displays system information on SSD1306 OLED with GPIO button control
-Uses gpiod and smbus2 for container compatibility
+Displays system information on SSD1306 OLED
+Uses smbus2 for container compatibility
 """
 
 import time
 import subprocess
 import os
-import sys
-import gpiod
+from collections import deque
 from smbus2 import SMBus, i2c_msg
 from PIL import Image, ImageDraw, ImageFont
 import adafruit_ssd1306
@@ -82,26 +81,103 @@ class I2CAdapter:
             buffer[start + i] = byte
 
 
-def reboot_system():
-    """Reboot Home Assistant via Supervisor API"""
-    log("REBOOT: Triggering system reboot via Supervisor API")
+def get_temperature(os_info):
+    """Retrieve host temperature with multiple fallbacks."""
     try:
-        response = requests.post('http://supervisor/host/reboot', 
-                                headers={'Authorization': f'Bearer {os.getenv("SUPERVISOR_TOKEN")}'})
-        log(f"REBOOT: Response status: {response.status_code}")
-    except Exception as e:
-        log(f"REBOOT: Error - {e}")
+        if os_info and 'data' in os_info:
+            temperature = os_info['data'].get('temperature')
+            if temperature is not None:
+                return f"{float(temperature):.0f}C"
+    except Exception:
+        pass
+
+    try:
+        temperatures = psutil.sensors_temperatures()
+        for entries in temperatures.values():
+            for entry in entries:
+                current = getattr(entry, 'current', None)
+                if current is not None:
+                    return f"{current:.0f}C"
+    except Exception:
+        pass
+
+    for path in (
+        '/host/sys/class/thermal/thermal_zone0/temp',
+        '/sys/class/thermal/thermal_zone0/temp',
+    ):
+        try:
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as temp_file:
+                    value = temp_file.read().strip()
+                if value:
+                    return f"{int(value) / 1000:.0f}C"
+        except Exception:
+            pass
+
+    return "N/A"
 
 
-def shutdown_system():
-    """Shutdown Home Assistant via Supervisor API"""
-    log("SHUTDOWN: Triggering system shutdown via Supervisor API")
+def get_disk_usage():
+    """Retrieve disk usage percentage, preferring mounted host storage."""
+    for path in ('/host', '/data', '/'):
+        try:
+            if os.path.exists(path):
+                return f"{psutil.disk_usage(path).percent:2.0f}"
+        except Exception:
+            pass
+
+    return "N/A"
+
+
+def get_uptime():
+    """Return a compact uptime string."""
     try:
-        response = requests.post('http://supervisor/host/shutdown',
-                                headers={'Authorization': f'Bearer {os.getenv("SUPERVISOR_TOKEN")}'})
-        log(f"SHUTDOWN: Response status: {response.status_code}")
-    except Exception as e:
-        log(f"SHUTDOWN: Error - {e}")
+        uptime_seconds = max(0, int(time.time() - psutil.boot_time()))
+        days, remainder = divmod(uptime_seconds, 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes, _ = divmod(remainder, 60)
+        if days > 0:
+            return f"{days}d {hours:02}h"
+        return f"{hours:02}h {minutes:02}m"
+    except Exception:
+        return "N/A"
+
+
+def fit_text(value, max_chars=21):
+    """Trim text to fit the 128px wide display."""
+    text = str(value)
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars - 1]}~"
+
+
+def draw_cpu_graph(draw, history, width, height, cpu, mem, temp):
+    """Render a compact CPU history graph for the OLED."""
+    title = f"CPU {cpu}% MEM {mem}%"
+    subtitle = f"TEMP {temp}"
+    draw.text((0, -2), fit_text(title), fill=255)
+    draw.text((0, 6), fit_text(subtitle), fill=255)
+
+    graph_top = 16
+    graph_height = height - graph_top - 1
+    graph_width = width
+
+    draw.line((0, graph_top + graph_height, graph_width - 1, graph_top + graph_height), fill=255)
+
+    if not history:
+        return
+
+    values = list(history)[-graph_width:]
+    start_x = graph_width - len(values)
+
+    for index, value in enumerate(values):
+        bar_height = max(1, int((value / 100) * graph_height)) if value > 0 else 0
+        x = start_x + index
+        if bar_height > 0:
+            draw.line(
+                (x, graph_top + graph_height, x, graph_top + graph_height - bar_height),
+                fill=255,
+            )
 
 
 def get_system_info():
@@ -172,30 +248,26 @@ def get_system_info():
             mem = f"{psutil.virtual_memory().percent:2.0f}"
     except:
         mem = "N/A"
-    
-    return hostname, ip, cpu, mem
+
+    return {
+        'hostname': hostname,
+        'ip': ip,
+        'cpu': cpu,
+        'mem': mem,
+        'temp': get_temperature(os_info),
+        'disk': get_disk_usage(),
+        'uptime': get_uptime(),
+    }
 
 
 def main():
     log("Initializing OLED System Info Display")
-    
-    # GPIO configuration
-    INFO_BTN = 20
-    LED = 23
-    
-    log(f"Configuring GPIO - Button: GPIO{INFO_BTN}, LED: GPIO{LED}")
-    chip = gpiod.Chip('gpiochip0')
-    led_line = chip.get_line(LED)
-    btn_line = chip.get_line(INFO_BTN)
-    led_line.request(consumer="oled-display", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
-    btn_line.request(consumer="oled-display", type=gpiod.LINE_REQ_DIR_IN)
-    log("GPIO configured successfully")
-    
+
     # Display configuration
     log("Initializing I2C and OLED display")
     i2c = I2CAdapter(1)
     disp = adafruit_ssd1306.SSD1306_I2C(128, 32, i2c)
-    disp.rotation = 2
+    disp.rotation = 0
     disp.fill(0)
     disp.show()
     log("OLED display initialized")
@@ -209,21 +281,11 @@ def main():
     padding = -2
     x = 0
     top = padding
-    
-    # State variables
-    disp_timer = 0
-    menu_timer = 0
-    menu_state = 0
-    last_button_state = 1
-    
-    DISP_TIMEOUT = 15
-    REBOOT_TIMEOUT = 5
-    SHUTDOWN_TIMEOUT = 10
-    
-    # Turn on LED
-    led_line.set_value(1)
-    log("Status LED turned on")
-    
+    history = deque(maxlen=128)
+    current_page = 0
+    last_page_switch = time.monotonic()
+    page_duration = 10
+
     # Startup message
     log("Displaying startup message")
     draw.rectangle((0, 0, disp.width, disp.height), outline=0, fill=0)
@@ -235,93 +297,47 @@ def main():
     time.sleep(5)
     
     log("Entering main loop")
-    
+
     try:
         while True:
             draw.rectangle((0, 0, disp.width, disp.height), outline=0, fill=0)
-            
-            button_state = btn_line.get_value()
-            
-            if button_state != last_button_state:
-                if button_state == 0:
-                    log("BUTTON: Pressed")
-                else:
-                    log(f"BUTTON: Released (menu_timer={menu_timer}, menu_state={menu_state})")
-                last_button_state = button_state
-            
-            if button_state == 0:
-                if menu_timer == 0:
-                    log("Display activated")
-                
-                if menu_timer == REBOOT_TIMEOUT:
-                    log("MENU: Entering REBOOT state")
-                    menu_state = 1
-                
-                if menu_timer == SHUTDOWN_TIMEOUT:
-                    log("MENU: Entering SHUTDOWN state")
-                    menu_state = 2
-                
-                disp_timer = DISP_TIMEOUT
-                menu_timer += 1
-            elif disp_timer == 0:
-                disp.image(image)
-                disp.show()
-            
-            if disp_timer > 0:
-                if menu_state == 0:
-                    hostname, ip, cpu, mem = get_system_info()
-                    draw.text((x, top),    f"NAME: {hostname}", font=font, fill=255)
-                    draw.text((x, top+12), f"IP  : {ip}", font=font, fill=255)
-                    draw.text((x, top+24), f"CPU : {cpu}% | MEM: {mem}%", font=font, fill=255)
-                    disp_timer -= 1
-                    
-                    if disp_timer == 0:
-                        log("Display timeout - entering sleep mode")
-                    
-                    if button_state == 1:
-                        if menu_timer > 0:
-                            log("MENU: Reset to INFO state")
-                        menu_timer = 0
-                        menu_state = 0
-                
-                elif menu_state == 1:
-                    if button_state == 1:
-                        draw.text((x, top+12), "Performing Reboot...", font=font, fill=255)
-                        disp.image(image)
-                        disp.show()
-                        time.sleep(3)
-                        reboot_system()
-                    else:
-                        draw.text((x, top),    ".......Reboot.......", font=font, fill=255)
-                        draw.text((x, top+12), "   Release Button   ", font=font, fill=255)
-                        draw.text((x, top+24), "      To Reboot     ", font=font, fill=255)
-                
-                elif menu_state == 2:
-                    if button_state == 1:
-                        draw.text((x, top+12), "Shutting down.......", font=font, fill=255)
-                        disp.image(image)
-                        disp.show()
-                        time.sleep(3)
-                        shutdown_system()
-                    else:
-                        draw.text((x, top),    "......Shutdown......", font=font, fill=255)
-                        draw.text((x, top+12), "   Release Button   ", font=font, fill=255)
-                        draw.text((x, top+24), "    To Shutdown     ", font=font, fill=255)
-                
-                disp.image(image)
-                disp.show()
-            
+
+            if time.monotonic() - last_page_switch >= page_duration:
+                current_page = (current_page + 1) % 3
+                last_page_switch = time.monotonic()
+                log(f"Display page changed to {current_page + 1}")
+
+            info = get_system_info()
+
+            try:
+                cpu_value = max(0, min(100, int(float(str(info['cpu']).strip()))))
+            except Exception:
+                cpu_value = 0
+
+            history.append(cpu_value)
+
+            if current_page == 0:
+                draw.text((x, top), fit_text(f"NAME: {info['hostname']}"), font=font, fill=255)
+                draw.text((x, top + 12), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
+                draw.text((x, top + 24), fit_text(f"CPU : {info['cpu']}% MEM: {info['mem']}%"), font=font, fill=255)
+            elif current_page == 1:
+                draw.text((x, top), fit_text(f"TEMP: {info['temp']} DISK:{info['disk']}%"), font=font, fill=255)
+                draw.text((x, top + 12), fit_text(f"UP  : {info['uptime']}"), font=font, fill=255)
+                draw.text((x, top + 24), fit_text(f"HOST: {info['hostname']}"), font=font, fill=255)
+            else:
+                draw_cpu_graph(draw, history, disp.width, disp.height, info['cpu'], info['mem'], info['temp'])
+
+            disp.image(image)
+            disp.show()
+
             time.sleep(1)
-    
+
     except KeyboardInterrupt:
         log("Received keyboard interrupt")
     except Exception as e:
         log(f"ERROR: {e}")
         raise
     finally:
-        log("Cleaning up GPIO resources")
-        led_line.release()
-        btn_line.release()
         log("Shutdown complete")
 
 

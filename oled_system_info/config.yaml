@@ -1,11 +1,10 @@
 name: "OLED System Info Display"
-description: "Displays system information on SSD1306 OLED screen with GPIO button control for reboot/shutdown"
-version: "2.0.1"
+description: "Displays system information on an SSD1306 OLED screen"
+version: "2.1.0"
 slug: "oled_system_info"
 init: false
 devices:
   - /dev/i2c-1
-  - /dev/gpiochip0
 arch:
   - aarch64
 privileged:
@@ -19,4 +18,4 @@ schema:
   chip_type: "list(BCM2835|BCM2836|BCM2837|BCM2711|BCM2712)"
 apparmor: false
 hassio_api: true
-image: "ghcr.io/phyberapex/{arch}-oled-system-info"
+image: "ghcr.io/ahmadherdiansyah/{arch}-oled-system-info"

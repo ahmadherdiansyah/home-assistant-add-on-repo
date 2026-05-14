@@ -3,21 +3,16 @@
 Displays system information on a 128x32 SSD1306 OLED screen connected to Raspberry Pi GPIO.
 
 ## Features
-- Real-time system information display (IP address, hostname, CPU, memory usage)
-- GPIO button control for display interaction
-- Long-press button for system reboot (~8 seconds)
-- Long-press button for system shutdown (~12 seconds)
-- LED indicator (optional)
+- Real-time system information display (IP address, hostname, CPU, memory, temperature, disk usage, uptime)
+- Always-on display refresh
+- Automatic page rotation every 10 seconds
+- Compact CPU history graph
 - Configurable for different Raspberry Pi models
 - Auto-starts with Home Assistant
 
 ## Hardware Requirements
 - Raspberry Pi (any model with GPIO pins)
 - SSD1306 OLED Display (128x32, I2C)
-- Push button (6mm x 6mm x 7mm) with cap
-- 3mm LED (optional)
-- 10K resistor
-- 330Ω resistor
 - Jumper wires
 
 ## Wiring
@@ -30,8 +25,7 @@ Displays system information on a 128x32 SSD1306 OLED screen connected to Raspber
 | SDA      | GPIO 2 (SDA)     | 3          |
 | SCL      | GPIO 3 (SCL)     | 5          |
 
-### Button and LED
-See the [original project](https://github.com/leelooauto/system_info) for complete wiring diagram including button and LED connections.
+Only the OLED I2C wiring above is required for this add-on.
 
 ## Prerequisites: Enable I2C on Home Assistant OS
 
@@ -200,13 +194,7 @@ The OLED displays:
 - CPU usage percentage
 - Memory usage percentage
 
-### Button Functions
-
-- **Press and release**: Show system information on display
-- **Hold ~8 seconds, then release**: System will reboot
-- **Hold ~12 seconds, then release**: System will shutdown
-
-The display shows confirmation messages for reboot/shutdown actions.
+The display refreshes system information automatically once per second.
 
 ## Troubleshooting
 
@@ -237,12 +225,6 @@ Expected: Device shown at address `3c`
    - I2C not enabled → Follow prerequisite steps
    - Wrong board type configured → Update in Configuration tab
    - Wiring issues → Verify connections
-
-### Button Not Responding
-
-- Verify GPIO wiring matches the original project
-- Check add-on logs for GPIO errors
-- Ensure button is properly connected with pull-up resistor
 
 ### I2C Device Not Detected
 
