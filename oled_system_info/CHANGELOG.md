@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.2.1] - 2026-05-14
+
+### Fixed
+- Updated display rendering for SSD1306 128x64 resolution
+- Expanded text layout to use full 64px display height
+
 ## [2.2.0] - 2026-05-14
 
 ### Added

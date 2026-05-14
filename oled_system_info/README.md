@@ -1,6 +1,6 @@
 # OLED System Info Display
 
-Displays system information on a 128x32 SSD1306 OLED screen connected to Raspberry Pi GPIO.
+Displays system information on a 128x64 SSD1306 OLED screen connected to Raspberry Pi GPIO.
 
 ## Features
 - Real-time system information display (IP address, hostname, CPU, memory, temperature, disk usage, uptime)
@@ -12,7 +12,7 @@ Displays system information on a 128x32 SSD1306 OLED screen connected to Raspber
 
 ## Hardware Requirements
 - Raspberry Pi (any model with GPIO pins)
-- SSD1306 OLED Display (128x32, I2C)
+- SSD1306 OLED Display (128x64, I2C)
 - Jumper wires
 
 ## Wiring

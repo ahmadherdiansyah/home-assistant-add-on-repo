@@ -302,7 +302,7 @@ def main():
     # Display configuration
     log("Initializing I2C and OLED display")
     i2c = I2CAdapter(1)
-    disp = adafruit_ssd1306.SSD1306_I2C(128, 32, i2c)
+    disp = adafruit_ssd1306.SSD1306_I2C(128, 64, i2c)
     disp.rotation = display_rotation
     disp.fill(0)
     disp.show()
@@ -318,7 +318,7 @@ def main():
     font = ImageFont.load_default()
     
     # Display constants
-    padding = -2
+    padding = 0
     x = 0
     top = padding
     history = deque(maxlen=128)
@@ -328,9 +328,10 @@ def main():
     # Startup message
     log("Displaying startup message")
     draw.rectangle((0, 0, disp.width, disp.height), outline=0, fill=0)
-    draw.text((x, top),    "--------------------", font=font, fill=255)
-    draw.text((x, top+12), " Infoscreen Started ", font=font, fill=255)
-    draw.text((x, top+24), "--------------------", font=font, fill=255)
+    draw.text((x, top), "OLED Infoscreen", font=font, fill=255)
+    draw.text((x, top + 12), "SSD1306 128x64", font=font, fill=255)
+    draw.text((x, top + 24), "Starting service...", font=font, fill=255)
+    draw.text((x, top + 36), "Please wait", font=font, fill=255)
     disp.image(image)
     disp.show()
     time.sleep(startup_delay)
@@ -361,10 +362,14 @@ def main():
                 draw.text((x, top), fit_text(f"NAME: {info['hostname']}"), font=font, fill=255)
                 draw.text((x, top + 12), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
                 draw.text((x, top + 24), fit_text(f"CPU : {info['cpu']}% MEM: {info['mem']}%"), font=font, fill=255)
+                draw.text((x, top + 36), fit_text(f"TMP : {info['temp']} DISK:{info['disk']}%"), font=font, fill=255)
+                draw.text((x, top + 48), fit_text(f"UP  : {info['uptime']}"), font=font, fill=255)
             elif page_name == 'details':
-                draw.text((x, top), fit_text(f"TEMP: {info['temp']} DISK:{info['disk']}%"), font=font, fill=255)
-                draw.text((x, top + 12), fit_text(f"UP  : {info['uptime']}"), font=font, fill=255)
-                draw.text((x, top + 24), fit_text(f"HOST: {info['hostname']}"), font=font, fill=255)
+                draw.text((x, top), fit_text("SYSTEM DETAILS"), font=font, fill=255)
+                draw.text((x, top + 12), fit_text(f"HOST: {info['hostname']}"), font=font, fill=255)
+                draw.text((x, top + 24), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
+                draw.text((x, top + 36), fit_text(f"TEMP: {info['temp']}"), font=font, fill=255)
+                draw.text((x, top + 48), fit_text(f"DISK: {info['disk']}% UP:{info['uptime']}"), font=font, fill=255)
             else:
                 draw_cpu_graph(draw, history, disp.width, disp.height, info['cpu'], info['mem'], info['temp'])
 

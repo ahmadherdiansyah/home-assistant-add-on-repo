@@ -180,7 +180,7 @@ The `3c` shows your OLED is detected!
 
 ### Required Components
 
-- **SSD1306 OLED Display (128x32, I2C)** - [Example](https://www.aliexpress.com/item/1pcs-0-91-inch-OLED-module-0-91-white-OLED-128X32-OLED-LCD-LED-Display-Module/32672229793.html)
+- **SSD1306 OLED Display (128x64, I2C)**
 - **Jumper wires** - Female-to-female recommended
 
 ### Wiring Connections
@@ -505,7 +505,7 @@ If your OLED uses a different address (some use 0x3D):
 Edit `system_info.py`:
 ```python
 i2c = busio.I2C(board.SCL, board.SDA)
-oled = adafruit_ssd1306.SSD1306_I2C(128, 32, i2c, addr=0x3D)  # Change 0x3C to 0x3D
+oled = adafruit_ssd1306.SSD1306_I2C(128, 64, i2c, addr=0x3D)  # Change 0x3C to 0x3D
 ```
 
 Then rebuild the add-on.
