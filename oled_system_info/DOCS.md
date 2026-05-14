@@ -298,9 +298,18 @@ chip_type: BCM2711
 display_rotation: 0
 refresh_interval: 1
 page_duration: 10
+page_order: summary,entities,details,graph
 startup_delay: 5
 show_details_page: true
 show_graph_page: true
+entity_ids: sensor.living_room_temperature,sensor.office_humidity
+show_alert_page: true
+alert_cpu_threshold: 95
+alert_temp_threshold: 75
+alert_disk_threshold: 90
+night_mode_enabled: false
+night_mode_start: "22:00"
+night_mode_end: "07:00"
 ```
 
 **Example for Raspberry Pi Zero W:**
@@ -316,13 +325,14 @@ chip_type: BCM2835
 ### Display Behavior
 
 **On Startup:**
-1. Display shows "Infoscreen Started" for the configured `startup_delay`
+1. Display shows the Home Assistant startup logo for the configured `startup_delay`
 2. Display begins refreshing system information automatically
 
 **Page Rotation:**
 1. The summary page is always enabled
-2. Optional details and graph pages can be enabled or disabled in the add-on configuration
-3. The display switches pages using the configured `page_duration`
+2. Optional details, entities, and graph pages can be enabled or disabled in the add-on configuration
+3. `page_order` controls the rotation order for enabled pages
+4. The display switches pages using the configured `page_duration`
 
 ### System Information Shown
 
@@ -341,7 +351,9 @@ Additional optional pages can show:
 - Temperature
 - Disk usage
 - Uptime
+- Home Assistant entity states
 - CPU history graph
+- Alert page when configured limits are exceeded
 
 ### Display Options
 
@@ -350,9 +362,18 @@ Additional optional pages can show:
 | `display_rotation` | `0` | Rotates the OLED output. Use `2` for 180-degree mounting. |
 | `refresh_interval` | `1` | Refresh interval in seconds. |
 | `page_duration` | `10` | How long each page stays visible before rotating. |
+| `page_order` | auto | Comma-separated page order using `summary`, `details`, `entities`, and `graph`. |
 | `startup_delay` | `5` | How long the startup message remains on screen. |
 | `show_details_page` | `true` | Enables the temperature, disk, and uptime page. |
 | `show_graph_page` | `true` | Enables the CPU history graph page. |
+| `entity_ids` | empty | Comma-separated Home Assistant entity IDs shown on the entities page. |
+| `show_alert_page` | `true` | Displays a full-screen alert page when thresholds are exceeded. |
+| `alert_cpu_threshold` | `95` | CPU percentage that triggers an alert. |
+| `alert_temp_threshold` | `75` | Temperature in Celsius that triggers an alert. |
+| `alert_disk_threshold` | `90` | Disk usage percentage that triggers an alert. |
+| `night_mode_enabled` | `false` | Enables scheduled display blanking. |
+| `night_mode_start` | `22:00` | Quiet-hours start time in 24-hour format. |
+| `night_mode_end` | `07:00` | Quiet-hours end time in 24-hour format. |
 
 ---
 

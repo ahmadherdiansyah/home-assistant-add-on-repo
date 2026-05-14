@@ -1,6 +1,6 @@
 name: "OLED System Info Display"
 description: "Displays system information on an SSD1306 OLED screen"
-version: "2.3.0"
+version: "2.4.0"
 slug: "oled_system_info"
 init: false
 devices:
@@ -16,18 +16,36 @@ options:
   display_rotation: 0
   refresh_interval: 1
   page_duration: 10
+  page_order: ""
   startup_delay: 5
   show_details_page: true
   show_graph_page: true
+  entity_ids: ""
+  show_alert_page: true
+  alert_cpu_threshold: 95
+  alert_temp_threshold: 75
+  alert_disk_threshold: 90
+  night_mode_enabled: false
+  night_mode_start: "22:00"
+  night_mode_end: "07:00"
 schema:
   board_type: "list(RASPBERRY_PI_ZERO|RASPBERRY_PI_ZERO_W|RASPBERRY_PI_2B|RASPBERRY_PI_3B|RASPBERRY_PI_3B_PLUS|RASPBERRY_PI_3A_PLUS|RASPBERRY_PI_4B|RASPBERRY_PI_5|RASPBERRY_PI_CM4)"
   chip_type: "list(BCM2835|BCM2836|BCM2837|BCM2711|BCM2712)"
   display_rotation: "list(0|1|2|3)"
   refresh_interval: "int(1,60)"
   page_duration: "int(3,120)"
+  page_order: "str"
   startup_delay: "int(0,30)"
   show_details_page: "bool"
   show_graph_page: "bool"
+  entity_ids: "str"
+  show_alert_page: "bool"
+  alert_cpu_threshold: "int(1,100)"
+  alert_temp_threshold: "int(1,120)"
+  alert_disk_threshold: "int(1,100)"
+  night_mode_enabled: "bool"
+  night_mode_start: "match(^([01][0-9]|2[0-3]):[0-5][0-9]$)"
+  night_mode_end: "match(^([01][0-9]|2[0-3]):[0-5][0-9]$)"
 apparmor: false
 hassio_api: true
 image: "ghcr.io/ahmadherdiansyah/{arch}-oled-system-info"

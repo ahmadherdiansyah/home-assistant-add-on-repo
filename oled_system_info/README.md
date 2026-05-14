@@ -7,6 +7,9 @@ Displays system information on a 128x64 SSD1306 OLED screen connected to Raspber
 - Always-on display refresh
 - Automatic page rotation every 10 seconds
 - Compact CPU history graph
+- Custom Home Assistant entity page
+- Threshold-based alert page
+- Night mode schedule
 - Configurable for different Raspberry Pi models
 - Auto-starts with Home Assistant
 
@@ -181,9 +184,14 @@ See the **Configuration** tab for the complete list.
 - `display_rotation`: Screen rotation (`0`, `1`, `2`, `3`)
 - `refresh_interval`: Seconds between display refreshes
 - `page_duration`: Seconds before the display switches pages
+- `page_order`: Comma-separated page order such as `summary,entities,details,graph`
 - `startup_delay`: Seconds to keep the startup screen visible
 - `show_details_page`: Enable or disable the temperature/disk/uptime page
 - `show_graph_page`: Enable or disable the CPU graph page
+- `entity_ids`: Comma-separated Home Assistant entity IDs for a custom entities page
+- `show_alert_page`: Show a full-screen alert page when thresholds are exceeded
+- `alert_cpu_threshold`, `alert_temp_threshold`, `alert_disk_threshold`: Alert limits
+- `night_mode_enabled`, `night_mode_start`, `night_mode_end`: Blank the display during quiet hours
 
 ### 4. Start the Add-on
 
@@ -203,6 +211,8 @@ The OLED displays:
 - Memory usage percentage
 - Temperature, disk usage, and uptime
 - CPU history graph
+- Optional Home Assistant entity states
+- Alert page when configured thresholds are exceeded
 
 The display refreshes automatically based on `refresh_interval` and rotates pages based on `page_duration`.
 

@@ -39,6 +39,30 @@ def get_env_bool(name, default):
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def get_env_csv(name):
+    """Read a comma-separated list from the environment."""
+    value = os.getenv(name, '')
+    if not value:
+        return []
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
+def get_env_clock_minutes(name, default):
+    """Read a HH:MM value from the environment as minutes since midnight."""
+    value = os.getenv(name, default)
+    try:
+        hours_text, minutes_text = value.split(':', 1)
+        hours = int(hours_text)
+        minutes = int(minutes_text)
+        if 0 <= hours <= 23 and 0 <= minutes <= 59:
+            return (hours * 60) + minutes
+    except (AttributeError, TypeError, ValueError):
+        pass
+
+    default_hours, default_minutes = default.split(':', 1)
+    return (int(default_hours) * 60) + int(default_minutes)
+
+
 def log(message):
     """Print log message with timestamp"""
     timestamp = time.strftime("%H:%M:%S")
@@ -166,12 +190,60 @@ def get_uptime():
         return "N/A"
 
 
+def parse_metric_value(value):
+    """Parse a numeric metric value from formatted text."""
+    cleaned = ''.join(character for character in str(value) if character.isdigit() or character in '.-')
+    if not cleaned or cleaned in {'-', '.', '-.'}:
+        return None
+
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def is_night_mode_active(enabled, start_minutes, end_minutes):
+    """Return whether the current local time falls inside the configured quiet window."""
+    if not enabled or start_minutes == end_minutes:
+        return False
+
+    now = time.localtime()
+    current_minutes = (now.tm_hour * 60) + now.tm_min
+
+    if start_minutes < end_minutes:
+        return start_minutes <= current_minutes < end_minutes
+    return current_minutes >= start_minutes or current_minutes < end_minutes
+
+
 def fit_text(value, max_chars=21):
     """Trim text to fit the 128px wide display."""
     text = str(value)
     if len(text) <= max_chars:
         return text
     return f"{text[:max_chars - 1]}~"
+
+
+def build_enabled_pages(page_order, show_details_page, show_graph_page, entity_ids):
+    """Build the final page list, preserving user order where valid."""
+    available_pages = ['summary']
+    if show_details_page:
+        available_pages.append('details')
+    if entity_ids:
+        available_pages.append('entities')
+    if show_graph_page:
+        available_pages.append('graph')
+
+    enabled_pages = []
+    for page in page_order:
+        page_name = page.lower()
+        if page_name in available_pages and page_name not in enabled_pages:
+            enabled_pages.append(page_name)
+
+    for page_name in available_pages:
+        if page_name not in enabled_pages:
+            enabled_pages.append(page_name)
+
+    return enabled_pages
 
 
 def draw_cpu_graph(draw, history, width, height, cpu, mem, temp):
@@ -227,6 +299,33 @@ def draw_cpu_graph(draw, history, width, height, cpu, mem, temp):
     draw.rectangle((latest_x - 1, latest_y - 1, latest_x + 1, latest_y + 1), fill=255)
 
 
+def draw_entities_page(draw, font, entities):
+    """Render configured Home Assistant entity states."""
+    draw.text((0, 0), "HOME ASSISTANT", font=font, fill=255)
+
+    if not entities:
+        draw.text((0, 24), "No entities set", font=font, fill=255)
+        draw.text((0, 36), "Configure entity_ids", font=font, fill=255)
+        return
+
+    for index, entity in enumerate(entities[:4]):
+        line = fit_text(f"{entity['name']}: {entity['value']}", 21)
+        draw.text((0, 12 + (index * 12)), line, font=font, fill=255)
+
+
+def draw_alert_page(draw, font, width, height, alerts):
+    """Render a dedicated alert page when thresholds are exceeded."""
+    draw.rectangle((0, 0, width - 1, height - 1), outline=255, fill=0)
+    draw.text((42, 0), "ALERT", font=font, fill=255)
+
+    visible_alerts = alerts[:4]
+    for index, alert in enumerate(visible_alerts):
+        draw.text((2, 12 + (index * 12)), fit_text(alert, 20), font=font, fill=255)
+
+    if len(alerts) > len(visible_alerts):
+        draw.text((2, height - 12), fit_text(f"+{len(alerts) - len(visible_alerts)} more", 20), font=font, fill=255)
+
+
 def draw_startup_logo(draw, x, top, font):
     """Draw a compact Home Assistant-style ASCII logo for startup."""
     logo_lines = [
@@ -243,7 +342,59 @@ def draw_startup_logo(draw, x, top, font):
         draw.text((x, top + (index * 8)), line, font=font, fill=255)
 
 
-def get_system_info():
+def get_custom_entities(entity_ids):
+    """Fetch configured Home Assistant entity states."""
+    entities = []
+    for entity_id in entity_ids[:4]:
+        entity_state = supervisor_api(f'core/api/states/{entity_id}')
+        if not isinstance(entity_state, dict):
+            entities.append({
+                'name': entity_id.split('.', 1)[-1].replace('_', ' '),
+                'value': 'unavail',
+            })
+            continue
+
+        attributes = entity_state.get('attributes', {})
+        name = attributes.get('friendly_name') or entity_id.split('.', 1)[-1].replace('_', ' ')
+        state = str(entity_state.get('state', 'unknown'))
+        unit = attributes.get('unit_of_measurement') or ''
+
+        if unit and state not in {'unknown', 'unavailable'}:
+            value = f"{state}{unit}"
+        else:
+            value = state
+
+        entities.append({
+            'name': name,
+            'value': value,
+        })
+
+    return entities
+
+
+def build_alerts(info, cpu_threshold, temp_threshold, disk_threshold):
+    """Build alert messages from the current system state."""
+    alerts = []
+
+    cpu_value = parse_metric_value(info['cpu'])
+    temp_value = parse_metric_value(info['temp'])
+    disk_value = parse_metric_value(info['disk'])
+
+    if cpu_value is not None and cpu_value >= cpu_threshold:
+        alerts.append(f"CPU high {info['cpu']}%")
+    if temp_value is not None and temp_value >= temp_threshold:
+        alerts.append(f"Temp high {info['temp']}")
+    if disk_value is not None and disk_value >= disk_threshold:
+        alerts.append(f"Disk high {info['disk']}%")
+    if info['ip'] in {'0.0.0.0', '', 'N/A'}:
+        alerts.append('IP unavailable')
+    if not info['supervisor_ok']:
+        alerts.append('Supervisor API down')
+
+    return alerts
+
+
+def get_system_info(entity_ids):
     """Retrieve HOST system information via Supervisor API"""
     # Get host info
     host_info = supervisor_api('host/info')
@@ -320,6 +471,8 @@ def get_system_info():
         'temp': get_temperature(os_info),
         'disk': get_disk_usage(),
         'uptime': get_uptime(),
+        'entities': get_custom_entities(entity_ids),
+        'supervisor_ok': any(item is not None for item in (host_info, network_info, os_info)),
     }
 
 
@@ -329,15 +482,20 @@ def main():
     display_rotation = get_env_int('OLED_DISPLAY_ROTATION', 0, 0, 3)
     refresh_interval = get_env_int('OLED_REFRESH_INTERVAL', 1, 1, 60)
     page_duration = get_env_int('OLED_PAGE_DURATION', 10, 3, 120)
+    page_order = get_env_csv('OLED_PAGE_ORDER')
     startup_delay = get_env_int('OLED_STARTUP_DELAY', 5, 0, 30)
     show_details_page = get_env_bool('OLED_SHOW_DETAILS_PAGE', True)
     show_graph_page = get_env_bool('OLED_SHOW_GRAPH_PAGE', True)
+    entity_ids = get_env_csv('OLED_ENTITY_IDS')
+    show_alert_page = get_env_bool('OLED_SHOW_ALERT_PAGE', True)
+    alert_cpu_threshold = get_env_int('OLED_ALERT_CPU_THRESHOLD', 95, 1, 100)
+    alert_temp_threshold = get_env_int('OLED_ALERT_TEMP_THRESHOLD', 75, 1, 120)
+    alert_disk_threshold = get_env_int('OLED_ALERT_DISK_THRESHOLD', 90, 1, 100)
+    night_mode_enabled = get_env_bool('OLED_NIGHT_MODE_ENABLED', False)
+    night_mode_start = get_env_clock_minutes('OLED_NIGHT_MODE_START', '22:00')
+    night_mode_end = get_env_clock_minutes('OLED_NIGHT_MODE_END', '07:00')
 
-    enabled_pages = ['summary']
-    if show_details_page:
-        enabled_pages.append('details')
-    if show_graph_page:
-        enabled_pages.append('graph')
+    enabled_pages = build_enabled_pages(page_order, show_details_page, show_graph_page, entity_ids)
 
     # Display configuration
     log("Initializing I2C and OLED display")
@@ -364,6 +522,7 @@ def main():
     history = deque(maxlen=128)
     current_page = 0
     last_page_switch = time.monotonic()
+    last_night_mode_state = None
 
     # Startup message
     log("Displaying startup message")
@@ -379,12 +538,25 @@ def main():
         while True:
             draw.rectangle((0, 0, disp.width, disp.height), outline=0, fill=0)
 
+            night_mode_active = is_night_mode_active(night_mode_enabled, night_mode_start, night_mode_end)
+            if night_mode_active != last_night_mode_state:
+                log(f"Night mode {'enabled' if night_mode_active else 'disabled'}")
+                last_night_mode_state = night_mode_active
+
+            if night_mode_active:
+                last_page_switch = time.monotonic()
+                disp.image(image)
+                disp.show()
+                time.sleep(refresh_interval)
+                continue
+
             if len(enabled_pages) > 1 and time.monotonic() - last_page_switch >= page_duration:
                 current_page = (current_page + 1) % len(enabled_pages)
                 last_page_switch = time.monotonic()
                 log(f"Display page changed to {enabled_pages[current_page]}")
 
-            info = get_system_info()
+            info = get_system_info(entity_ids)
+            alerts = build_alerts(info, alert_cpu_threshold, alert_temp_threshold, alert_disk_threshold)
 
             try:
                 cpu_value = max(0, min(100, int(float(str(info['cpu']).strip()))))
@@ -395,7 +567,9 @@ def main():
 
             page_name = enabled_pages[current_page]
 
-            if page_name == 'summary':
+            if show_alert_page and alerts:
+                draw_alert_page(draw, font, disp.width, disp.height, alerts)
+            elif page_name == 'summary':
                 draw.text((x, top), fit_text(f"NAME: {info['hostname']}"), font=font, fill=255)
                 draw.text((x, top + 12), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
                 draw.text((x, top + 24), fit_text(f"CPU : {info['cpu']}% MEM: {info['mem']}%"), font=font, fill=255)
@@ -407,6 +581,8 @@ def main():
                 draw.text((x, top + 24), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
                 draw.text((x, top + 36), fit_text(f"TEMP: {info['temp']}"), font=font, fill=255)
                 draw.text((x, top + 48), fit_text(f"DISK: {info['disk']}% UP:{info['uptime']}"), font=font, fill=255)
+            elif page_name == 'entities':
+                draw_entities_page(draw, font, info['entities'])
             else:
                 draw_cpu_graph(draw, history, disp.width, disp.height, info['cpu'], info['mem'], info['temp'])
 

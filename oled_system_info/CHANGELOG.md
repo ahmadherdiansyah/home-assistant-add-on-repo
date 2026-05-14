@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.4.0] - 2026-05-14
+
+### Added
+- Configurable page order for display rotation
+- Custom Home Assistant entity page via `entity_ids`
+- Threshold-based alert page for CPU, temperature, disk, and API availability
+- Night mode scheduling to blank the display during quiet hours
+
 ## [2.3.0] - 2026-05-14
 
 ### Changed
