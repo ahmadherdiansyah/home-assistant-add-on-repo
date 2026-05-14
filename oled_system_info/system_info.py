@@ -175,32 +175,72 @@ def fit_text(value, max_chars=21):
 
 
 def draw_cpu_graph(draw, history, width, height, cpu, mem, temp):
-    """Render a compact CPU history graph for the OLED."""
-    title = f"CPU {cpu}% MEM {mem}%"
-    subtitle = f"TEMP {temp}"
-    draw.text((0, -2), fit_text(title), fill=255)
-    draw.text((0, 6), fit_text(subtitle), fill=255)
+    """Render a cleaner CPU history line graph for the OLED."""
+    draw.text((0, 0), fit_text(f"CPU {cpu}% MEM {mem}%"), fill=255)
+    draw.text((0, 8), fit_text(f"TEMP {temp}"), fill=255)
 
-    graph_top = 16
-    graph_height = height - graph_top - 1
-    graph_width = width
+    chart_left = 0
+    chart_top = 18
+    chart_right = width - 1
+    chart_bottom = height - 1
+    draw.rectangle((chart_left, chart_top, chart_right, chart_bottom), outline=255)
 
-    draw.line((0, graph_top + graph_height, graph_width - 1, graph_top + graph_height), fill=255)
+    inner_left = chart_left + 1
+    inner_top = chart_top + 1
+    inner_right = chart_right - 1
+    inner_bottom = chart_bottom - 1
+    inner_width = max(1, inner_right - inner_left + 1)
+    inner_height = max(1, inner_bottom - inner_top + 1)
+
+    # Draw dashed guide lines at 25%, 50%, and 75%.
+    for percent in (25, 50, 75):
+        y = inner_bottom - int((percent / 100) * (inner_height - 1))
+        for x in range(inner_left, inner_right + 1, 4):
+            draw.point((x, y), fill=255)
 
     if not history:
+        draw.text((34, 36), "Collecting...", fill=255)
         return
 
-    values = list(history)[-graph_width:]
-    start_x = graph_width - len(values)
+    raw_values = [max(0, min(100, int(v))) for v in list(history)[-inner_width:]]
 
+    # Smooth values to reduce jitter and make the trend easier to read.
+    values = []
+    for index in range(len(raw_values)):
+        start = max(0, index - 2)
+        window = raw_values[start:index + 1]
+        values.append(sum(window) / len(window))
+
+    start_x = inner_right - (len(values) - 1)
+    points = []
     for index, value in enumerate(values):
-        bar_height = max(1, int((value / 100) * graph_height)) if value > 0 else 0
         x = start_x + index
-        if bar_height > 0:
-            draw.line(
-                (x, graph_top + graph_height, x, graph_top + graph_height - bar_height),
-                fill=255,
-            )
+        y = inner_bottom - int((value / 100) * (inner_height - 1))
+        points.append((x, y))
+
+    for index in range(1, len(points)):
+        x1, y1 = points[index - 1]
+        x2, y2 = points[index]
+        draw.line((x1, y1, x2, y2), fill=255)
+
+    latest_x, latest_y = points[-1]
+    draw.rectangle((latest_x - 1, latest_y - 1, latest_x + 1, latest_y + 1), fill=255)
+
+
+def draw_startup_logo(draw, x, top, font):
+    """Draw a compact Home Assistant-style ASCII logo for startup."""
+    logo_lines = [
+        "      /\\      ",
+        "     /  \\     ",
+        "    /----\\    ",
+        "   / |  | \\   ",
+        "  /  |  |  \\  ",
+        " /___|__|___\\ ",
+        "   HOME ASSIST ",
+    ]
+
+    for index, line in enumerate(logo_lines):
+        draw.text((x, top + (index * 8)), line, font=font, fill=255)
 
 
 def get_system_info():
@@ -328,10 +368,7 @@ def main():
     # Startup message
     log("Displaying startup message")
     draw.rectangle((0, 0, disp.width, disp.height), outline=0, fill=0)
-    draw.text((x, top), "OLED Infoscreen", font=font, fill=255)
-    draw.text((x, top + 12), "SSD1306 128x64", font=font, fill=255)
-    draw.text((x, top + 24), "Starting service...", font=font, fill=255)
-    draw.text((x, top + 36), "Please wait", font=font, fill=255)
+    draw_startup_logo(draw, x, top, font)
     disp.image(image)
     disp.show()
     time.sleep(startup_delay)
