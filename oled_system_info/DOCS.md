@@ -298,15 +298,25 @@ chip_type: BCM2711
 display_rotation: 0
 refresh_interval: 1
 page_duration: 10
-page_order: summary,entities,details,graph
+page_duration_summary: 0
+page_duration_details: 0
+page_duration_clock: 20
+page_duration_entities: 15
+page_duration_graph: 0
+page_duration_alert: 30
+page_order: summary,clock,entities,details,graph
 startup_delay: 5
 show_details_page: true
+show_clock_page: true
 show_graph_page: true
 entity_ids: sensor.living_room_temperature,sensor.office_humidity
+entity_cache_ttl: 5
 show_alert_page: true
+alert_page_position: front
 alert_cpu_threshold: 95
 alert_temp_threshold: 75
 alert_disk_threshold: 90
+supervisor_cache_ttl: 3
 night_mode_enabled: false
 night_mode_start: "22:00"
 night_mode_end: "07:00"
@@ -330,9 +340,11 @@ chip_type: BCM2835
 
 **Page Rotation:**
 1. The summary page is always enabled
-2. Optional details, entities, and graph pages can be enabled or disabled in the add-on configuration
+2. Optional clock, details, entities, and graph pages can be enabled or disabled in the add-on configuration
 3. `page_order` controls the rotation order for enabled pages
 4. The display switches pages using the configured `page_duration`
+5. Any `page_duration_*` override can keep a specific page visible longer than the base interval
+6. A short dissolve transition is shown whenever the page changes
 
 ### System Information Shown
 
@@ -351,9 +363,14 @@ Additional optional pages can show:
 - Temperature
 - Disk usage
 - Uptime
+- Clock and date
 - Home Assistant entity states
 - CPU history graph
 - Alert page when configured limits are exceeded
+
+If more than four entities are configured, the entities page is automatically split into multiple pages and inserted into the normal rotation order.
+Entity state lookups are cached for `entity_cache_ttl` seconds to reduce Home Assistant API traffic.
+Supervisor host, network, and OS info lookups are cached for `supervisor_cache_ttl` seconds to reduce API traffic further.
 
 ### Display Options
 
@@ -362,15 +379,25 @@ Additional optional pages can show:
 | `display_rotation` | `0` | Rotates the OLED output. Use `2` for 180-degree mounting. |
 | `refresh_interval` | `1` | Refresh interval in seconds. |
 | `page_duration` | `10` | How long each page stays visible before rotating. |
-| `page_order` | auto | Comma-separated page order using `summary`, `details`, `entities`, and `graph`. |
+| `page_duration_summary` | `0` | Optional summary-page duration override. `0` uses `page_duration`. |
+| `page_duration_details` | `0` | Optional details-page duration override. `0` uses `page_duration`. |
+| `page_duration_clock` | `0` | Optional clock-page duration override. `0` uses `page_duration`. |
+| `page_duration_entities` | `0` | Optional entities-page duration override. `0` uses `page_duration`. |
+| `page_duration_graph` | `0` | Optional graph-page duration override. `0` uses `page_duration`. |
+| `page_duration_alert` | `0` | Optional alert-page duration override. `0` uses `page_duration`. |
+| `page_order` | auto | Comma-separated page order using `summary`, `clock`, `details`, `entities`, and `graph`. |
 | `startup_delay` | `5` | How long the startup message remains on screen. |
 | `show_details_page` | `true` | Enables the temperature, disk, and uptime page. |
+| `show_clock_page` | `true` | Enables the dedicated clock and date page. |
 | `show_graph_page` | `true` | Enables the CPU history graph page. |
 | `entity_ids` | empty | Comma-separated Home Assistant entity IDs shown on the entities page. |
+| `entity_cache_ttl` | `5` | Cache TTL in seconds for Home Assistant entity state lookups. |
 | `show_alert_page` | `true` | Displays a full-screen alert page when thresholds are exceeded. |
+| `alert_page_position` | `front` | Pins the alert page to the front or back of the active rotation. |
 | `alert_cpu_threshold` | `95` | CPU percentage that triggers an alert. |
 | `alert_temp_threshold` | `75` | Temperature in Celsius that triggers an alert. |
 | `alert_disk_threshold` | `90` | Disk usage percentage that triggers an alert. |
+| `supervisor_cache_ttl` | `3` | Cache TTL in seconds for Supervisor host, network, and OS info calls. |
 | `night_mode_enabled` | `false` | Enables scheduled display blanking. |
 | `night_mode_start` | `22:00` | Quiet-hours start time in 24-hour format. |
 | `night_mode_end` | `07:00` | Quiet-hours end time in 24-hour format. |

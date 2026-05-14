@@ -6,9 +6,15 @@ Displays system information on a 128x64 SSD1306 OLED screen connected to Raspber
 - Real-time system information display (IP address, hostname, CPU, memory, temperature, disk usage, uptime)
 - Always-on display refresh
 - Automatic page rotation every 10 seconds
+- Per-page display durations
+- Short page transition effect on page changes
 - Compact CPU history graph
+- Dedicated clock and date page
 - Custom Home Assistant entity page
+- Multi-page entity pagination for larger entity lists
 - Threshold-based alert page
+- Cached Home Assistant entity lookups
+- Cached Supervisor host/network/OS lookups
 - Night mode schedule
 - Configurable for different Raspberry Pi models
 - Auto-starts with Home Assistant
@@ -184,13 +190,18 @@ See the **Configuration** tab for the complete list.
 - `display_rotation`: Screen rotation (`0`, `1`, `2`, `3`)
 - `refresh_interval`: Seconds between display refreshes
 - `page_duration`: Seconds before the display switches pages
-- `page_order`: Comma-separated page order such as `summary,entities,details,graph`
+- `page_duration_summary`, `page_duration_clock`, `page_duration_details`, `page_duration_entities`, `page_duration_graph`, `page_duration_alert`: Optional per-page overrides (`0` uses the base duration)
+- `page_order`: Comma-separated page order such as `summary,clock,entities,details,graph`
 - `startup_delay`: Seconds to keep the startup screen visible
 - `show_details_page`: Enable or disable the temperature/disk/uptime page
+- `show_clock_page`: Enable or disable the clock/date page
 - `show_graph_page`: Enable or disable the CPU graph page
 - `entity_ids`: Comma-separated Home Assistant entity IDs for a custom entities page
+- `entity_cache_ttl`: Cache entity state lookups for this many seconds
 - `show_alert_page`: Show a full-screen alert page when thresholds are exceeded
+- `alert_page_position`: Place the alert page at the front or back of the rotation
 - `alert_cpu_threshold`, `alert_temp_threshold`, `alert_disk_threshold`: Alert limits
+- `supervisor_cache_ttl`: Cache host/network/OS Supervisor lookups for this many seconds
 - `night_mode_enabled`, `night_mode_start`, `night_mode_end`: Blank the display during quiet hours
 
 ### 4. Start the Add-on
@@ -210,9 +221,14 @@ The OLED displays:
 - CPU usage percentage
 - Memory usage percentage
 - Temperature, disk usage, and uptime
+- Dedicated clock and date page
 - CPU history graph
 - Optional Home Assistant entity states
 - Alert page when configured thresholds are exceeded
+
+When more than four entities are configured in `entity_ids`, the entities page automatically paginates across multiple rotation slots.
+Clock, entity, and alert pages can stay visible longer than the summary page by setting their page-specific duration overrides.
+A short dissolve transition is shown when the display switches to a different page.
 
 The display refreshes automatically based on `refresh_interval` and rotates pages based on `page_duration`.
 

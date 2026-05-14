@@ -1,6 +1,6 @@
 name: "OLED System Info Display"
 description: "Displays system information on an SSD1306 OLED screen"
-version: "2.4.0"
+version: "2.7.0"
 slug: "oled_system_info"
 init: false
 devices:
@@ -16,15 +16,25 @@ options:
   display_rotation: 0
   refresh_interval: 1
   page_duration: 10
+  page_duration_summary: 0
+  page_duration_details: 0
+  page_duration_clock: 0
+  page_duration_entities: 0
+  page_duration_graph: 0
+  page_duration_alert: 0
   page_order: ""
   startup_delay: 5
   show_details_page: true
+  show_clock_page: true
   show_graph_page: true
   entity_ids: ""
+  entity_cache_ttl: 5
   show_alert_page: true
+  alert_page_position: "front"
   alert_cpu_threshold: 95
   alert_temp_threshold: 75
   alert_disk_threshold: 90
+  supervisor_cache_ttl: 3
   night_mode_enabled: false
   night_mode_start: "22:00"
   night_mode_end: "07:00"
@@ -34,15 +44,25 @@ schema:
   display_rotation: "list(0|1|2|3)"
   refresh_interval: "int(1,60)"
   page_duration: "int(3,120)"
+  page_duration_summary: "int(0,300)"
+  page_duration_details: "int(0,300)"
+  page_duration_clock: "int(0,300)"
+  page_duration_entities: "int(0,300)"
+  page_duration_graph: "int(0,300)"
+  page_duration_alert: "int(0,300)"
   page_order: "str"
   startup_delay: "int(0,30)"
   show_details_page: "bool"
+  show_clock_page: "bool"
   show_graph_page: "bool"
   entity_ids: "str"
+  entity_cache_ttl: "int(0,300)"
   show_alert_page: "bool"
+  alert_page_position: "list(front|back)"
   alert_cpu_threshold: "int(1,100)"
   alert_temp_threshold: "int(1,120)"
   alert_disk_threshold: "int(1,100)"
+  supervisor_cache_ttl: "int(0,300)"
   night_mode_enabled: "bool"
   night_mode_start: "match(^([01][0-9]|2[0-3]):[0-5][0-9]$)"
   night_mode_end: "match(^([01][0-9]|2[0-3]):[0-5][0-9]$)"

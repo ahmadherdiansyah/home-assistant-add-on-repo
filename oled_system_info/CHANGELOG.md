@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.7.0] - 2026-05-14
+
+### Added
+- Short dissolve page transitions on page changes for a more intentional page switch
+- Cached Supervisor host, network, and OS info calls with configurable TTL
+- Configurable alert page position at the front or back of the page rotation
+
+## [2.6.0] - 2026-05-14
+
+### Added
+- Per-page duration overrides for summary, details, clock, entities, graph, and alert screens
+- Cached Home Assistant entity state fetching with configurable TTL
+- Small header icons for the clock and entities pages
+
+## [2.5.0] - 2026-05-14
+
+### Added
+- Multi-page entity pagination when more than four entity IDs are configured
+- Dedicated clock and date page with `show_clock_page` and `page_order` support
+- Improved alert screen layout with severity icons and prioritized alert rendering
+
 ## [2.4.0] - 2026-05-14
 
 ### Added

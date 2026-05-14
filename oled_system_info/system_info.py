@@ -16,6 +16,11 @@ import psutil
 import requests
 
 
+API_CACHE = {}
+PAGE_TRANSITION_STEPS = 4
+PAGE_TRANSITION_DELAY = 0.03
+
+
 def get_env_int(name, default, minimum=None, maximum=None):
     """Read an integer from the environment with bounds."""
     value = os.getenv(name, str(default))
@@ -37,6 +42,15 @@ def get_env_bool(name, default):
     if value is None:
         return default
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def get_env_choice(name, default, allowed_values):
+    """Read a string option from the environment with validation."""
+    value = os.getenv(name, default)
+    normalized = str(value).strip().lower()
+    if normalized in allowed_values:
+        return normalized
+    return default
 
 
 def get_env_csv(name):
@@ -69,8 +83,13 @@ def log(message):
     print(f"[{timestamp}] {message}", flush=True)
 
 
-def supervisor_api(endpoint):
+def supervisor_api(endpoint, cache_ttl=0):
     """Call Home Assistant Supervisor API"""
+    now = time.monotonic()
+    cached = API_CACHE.get(endpoint)
+    if cache_ttl > 0 and cached and now < cached['expires_at']:
+        return cached['value']
+
     try:
         response = requests.get(
             f'http://supervisor/{endpoint}',
@@ -78,9 +97,18 @@ def supervisor_api(endpoint):
             timeout=5
         )
         if response.status_code == 200:
-            return response.json()
+            data = response.json()
+            if cache_ttl > 0:
+                API_CACHE[endpoint] = {
+                    'expires_at': now + cache_ttl,
+                    'value': data,
+                }
+            return data
     except Exception as e:
         log(f"API Error ({endpoint}): {e}")
+
+    if cache_ttl > 0 and cached:
+        return cached['value']
     return None
 
 
@@ -223,27 +251,106 @@ def fit_text(value, max_chars=21):
     return f"{text[:max_chars - 1]}~"
 
 
-def build_enabled_pages(page_order, show_details_page, show_graph_page, entity_ids):
+def get_logical_page_name(page_name):
+    """Collapse expanded page IDs to their logical page name."""
+    return page_name.split(':', 1)[0]
+
+
+def expand_page_name(page_name, entity_count):
+    """Expand logical pages into concrete display pages."""
+    if page_name != 'entities' or entity_count <= 0:
+        return [page_name]
+
+    page_count = max(1, (entity_count + 3) // 4)
+    return [f"entities:{page_number}/{page_count}" for page_number in range(1, page_count + 1)]
+
+
+def build_enabled_pages(page_order, show_details_page, show_clock_page, show_graph_page, entity_ids):
     """Build the final page list, preserving user order where valid."""
     available_pages = ['summary']
     if show_details_page:
         available_pages.append('details')
+    if show_clock_page:
+        available_pages.append('clock')
     if entity_ids:
         available_pages.append('entities')
     if show_graph_page:
         available_pages.append('graph')
 
     enabled_pages = []
+    entity_count = len(entity_ids)
+    selected_pages = set()
     for page in page_order:
         page_name = page.lower()
-        if page_name in available_pages and page_name not in enabled_pages:
-            enabled_pages.append(page_name)
+        if page_name in available_pages and page_name not in selected_pages:
+            enabled_pages.extend(expand_page_name(page_name, entity_count))
+            selected_pages.add(page_name)
 
     for page_name in available_pages:
-        if page_name not in enabled_pages:
-            enabled_pages.append(page_name)
+        if page_name not in selected_pages:
+            enabled_pages.extend(expand_page_name(page_name, entity_count))
+            selected_pages.add(page_name)
 
     return enabled_pages
+
+
+def draw_centered_text(draw, y, width, text, font, fill=255):
+    """Draw centered text on the OLED."""
+    left, _, right, _ = draw.textbbox((0, 0), text, font=font)
+    text_width = right - left
+    x = max(0, (width - text_width) // 2)
+    draw.text((x, y), text, font=font, fill=fill)
+
+
+def draw_clock_header_icon(draw, x, y, fill):
+    """Draw a compact clock icon in the page header."""
+    draw.ellipse((x, y, x + 8, y + 8), outline=fill)
+    draw.line((x + 4, y + 4, x + 4, y + 2), fill=fill)
+    draw.line((x + 4, y + 4, x + 6, y + 5), fill=fill)
+
+
+def draw_entities_header_icon(draw, x, y, fill):
+    """Draw a compact entities icon in the page header."""
+    draw.rectangle((x, y + 1, x + 3, y + 4), outline=fill)
+    draw.rectangle((x + 5, y + 1, x + 8, y + 4), outline=fill)
+    draw.rectangle((x + 2, y + 5, x + 6, y + 8), outline=fill)
+
+
+def draw_page_header(draw, font, width, title, icon_name=None):
+    """Draw a consistent filled page header with an optional icon."""
+    draw.rectangle((0, 0, width - 1, 11), outline=255, fill=255)
+
+    if icon_name == 'clock':
+        draw_clock_header_icon(draw, 4, 1, fill=0)
+    elif icon_name == 'entities':
+        draw_entities_header_icon(draw, 4, 1, fill=0)
+
+    draw_centered_text(draw, 2, width, title, font, fill=0)
+
+
+def animate_page_transition(disp, previous_image, next_image, steps=PAGE_TRANSITION_STEPS, frame_delay=PAGE_TRANSITION_DELAY):
+    """Animate a short dissolve transition between two OLED pages."""
+    if previous_image is None or steps <= 1:
+        disp.image(next_image)
+        disp.show()
+        return
+
+    previous_pixels = previous_image.load()
+    next_pixels = next_image.load()
+    width, height = next_image.size
+
+    for step in range(1, steps + 1):
+        frame = Image.new("1", next_image.size)
+        frame_pixels = frame.load()
+        for y in range(height):
+            for x in range(width):
+                pattern = (x * 3 + y * 5) % steps
+                frame_pixels[x, y] = next_pixels[x, y] if pattern < step else previous_pixels[x, y]
+
+        disp.image(frame)
+        disp.show()
+        if step < steps:
+            time.sleep(frame_delay)
 
 
 def draw_cpu_graph(draw, history, width, height, cpu, mem, temp):
@@ -299,31 +406,63 @@ def draw_cpu_graph(draw, history, width, height, cpu, mem, temp):
     draw.rectangle((latest_x - 1, latest_y - 1, latest_x + 1, latest_y + 1), fill=255)
 
 
-def draw_entities_page(draw, font, entities):
+def draw_entities_page(draw, font, entities, page_number, page_count):
     """Render configured Home Assistant entity states."""
-    draw.text((0, 0), "HOME ASSISTANT", font=font, fill=255)
+    title = "ENTITIES"
+    if page_count > 1:
+        title = f"ENTITIES {page_number}/{page_count}"
+    draw_page_header(draw, font, 128, title, icon_name='entities')
 
     if not entities:
         draw.text((0, 24), "No entities set", font=font, fill=255)
         draw.text((0, 36), "Configure entity_ids", font=font, fill=255)
         return
 
-    for index, entity in enumerate(entities[:4]):
+    start = (page_number - 1) * 4
+    visible_entities = entities[start:start + 4]
+
+    for index, entity in enumerate(visible_entities):
         line = fit_text(f"{entity['name']}: {entity['value']}", 21)
         draw.text((0, 12 + (index * 12)), line, font=font, fill=255)
 
 
+def draw_alert_icon(draw, x, y, severity):
+    """Draw a simple severity icon for the alert screen."""
+    if severity == 'critical':
+        points = [(x + 10, y), (x + 20, y + 10), (x + 10, y + 20), (x, y + 10)]
+        draw.polygon(points, outline=255)
+        draw.line((x + 10, y + 4, x + 10, y + 12), fill=255)
+        draw.point((x + 10, y + 16), fill=255)
+        return
+
+    points = [(x + 10, y), (x + 20, y + 18), (x, y + 18)]
+    draw.polygon(points, outline=255)
+    draw.line((x + 10, y + 5, x + 10, y + 11), fill=255)
+    draw.point((x + 10, y + 14), fill=255)
+
+
 def draw_alert_page(draw, font, width, height, alerts):
     """Render a dedicated alert page when thresholds are exceeded."""
+    highest_severity = 'critical' if any(alert['severity'] == 'critical' for alert in alerts) else 'warning'
+    header_text = 'CRITICAL ALERT' if highest_severity == 'critical' else 'WARNING ALERT'
+    primary_alert = alerts[0]
+    extra_alerts = alerts[1:3]
+
     draw.rectangle((0, 0, width - 1, height - 1), outline=255, fill=0)
-    draw.text((42, 0), "ALERT", font=font, fill=255)
+    draw.rectangle((0, 0, width - 1, 11), outline=255, fill=255)
+    draw_centered_text(draw, 2, width, header_text, font, fill=0)
 
-    visible_alerts = alerts[:4]
-    for index, alert in enumerate(visible_alerts):
-        draw.text((2, 12 + (index * 12)), fit_text(alert, 20), font=font, fill=255)
+    draw_alert_icon(draw, 4, 16, highest_severity)
+    draw.text((30, 16), fit_text(primary_alert['title'], 16), font=font, fill=255)
+    draw.text((30, 28), fit_text(primary_alert['detail'], 16), font=font, fill=255)
+    draw.line((2, 40, width - 3, 40), fill=255)
 
-    if len(alerts) > len(visible_alerts):
-        draw.text((2, height - 12), fit_text(f"+{len(alerts) - len(visible_alerts)} more", 20), font=font, fill=255)
+    for index, alert in enumerate(extra_alerts):
+        prefix = '!!' if alert['severity'] == 'critical' else '! '
+        draw.text((2, 44 + (index * 10)), fit_text(f"{prefix}{alert['title']}", 20), font=font, fill=255)
+
+    if len(alerts) > 3:
+        draw.text((2, height - 10), fit_text(f"+{len(alerts) - 3} more alerts", 20), font=font, fill=255)
 
 
 def draw_startup_logo(draw, x, top, font):
@@ -342,11 +481,35 @@ def draw_startup_logo(draw, x, top, font):
         draw.text((x, top + (index * 8)), line, font=font, fill=255)
 
 
-def get_custom_entities(entity_ids):
+def draw_clock_page(draw, font, width, uptime):
+    """Render a dedicated date and time page."""
+    now = time.localtime()
+    time_text = time.strftime('%H:%M:%S', now)
+    date_text = time.strftime('%a %d %b %Y', now)
+
+    draw_page_header(draw, font, width, 'CLOCK', icon_name='clock')
+    draw_centered_text(draw, 18, width, time_text, font, fill=255)
+    draw_centered_text(draw, 32, width, date_text, font, fill=255)
+    draw_centered_text(draw, 46, width, f"UP {uptime}", font, fill=255)
+
+
+def get_custom_entities(entity_ids, cache_ttl):
     """Fetch configured Home Assistant entity states."""
+    if not entity_ids:
+        return []
+
+    all_states = supervisor_api('core/api/states', cache_ttl=cache_ttl)
+    states_by_id = {}
+    if isinstance(all_states, list):
+        states_by_id = {
+            item.get('entity_id'): item
+            for item in all_states
+            if isinstance(item, dict) and item.get('entity_id')
+        }
+
     entities = []
-    for entity_id in entity_ids[:4]:
-        entity_state = supervisor_api(f'core/api/states/{entity_id}')
+    for entity_id in entity_ids:
+        entity_state = states_by_id.get(entity_id)
         if not isinstance(entity_state, dict):
             entities.append({
                 'name': entity_id.split('.', 1)[-1].replace('_', ' '),
@@ -381,25 +544,50 @@ def build_alerts(info, cpu_threshold, temp_threshold, disk_threshold):
     disk_value = parse_metric_value(info['disk'])
 
     if cpu_value is not None and cpu_value >= cpu_threshold:
-        alerts.append(f"CPU high {info['cpu']}%")
+        severity = 'critical' if cpu_value >= min(100, cpu_threshold + 5) else 'warning'
+        alerts.append({
+            'severity': severity,
+            'title': 'CPU LOAD HIGH',
+            'detail': f"{info['cpu']}% >= {cpu_threshold}%",
+        })
     if temp_value is not None and temp_value >= temp_threshold:
-        alerts.append(f"Temp high {info['temp']}")
+        severity = 'critical' if temp_value >= temp_threshold + 5 else 'warning'
+        alerts.append({
+            'severity': severity,
+            'title': 'TEMP HIGH',
+            'detail': f"{info['temp']} >= {temp_threshold}C",
+        })
     if disk_value is not None and disk_value >= disk_threshold:
-        alerts.append(f"Disk high {info['disk']}%")
+        severity = 'critical' if disk_value >= min(100, disk_threshold + 5) else 'warning'
+        alerts.append({
+            'severity': severity,
+            'title': 'DISK NEAR FULL',
+            'detail': f"{info['disk']}% >= {disk_threshold}%",
+        })
     if info['ip'] in {'0.0.0.0', '', 'N/A'}:
-        alerts.append('IP unavailable')
+        alerts.append({
+            'severity': 'warning',
+            'title': 'IP UNAVAILABLE',
+            'detail': 'No LAN address found',
+        })
     if not info['supervisor_ok']:
-        alerts.append('Supervisor API down')
+        alerts.append({
+            'severity': 'critical',
+            'title': 'SUPERVISOR DOWN',
+            'detail': 'API not responding',
+        })
+
+    alerts.sort(key=lambda alert: 0 if alert['severity'] == 'critical' else 1)
 
     return alerts
 
 
-def get_system_info(entity_ids):
+def get_system_info(entity_ids, entity_cache_ttl, supervisor_cache_ttl):
     """Retrieve HOST system information via Supervisor API"""
     # Get host info
-    host_info = supervisor_api('host/info')
-    network_info = supervisor_api('network/info')
-    os_info = supervisor_api('os/info')
+    host_info = supervisor_api('host/info', cache_ttl=supervisor_cache_ttl)
+    network_info = supervisor_api('network/info', cache_ttl=supervisor_cache_ttl)
+    os_info = supervisor_api('os/info', cache_ttl=supervisor_cache_ttl)
     
     # Hostname
     if host_info and 'data' in host_info:
@@ -471,9 +659,27 @@ def get_system_info(entity_ids):
         'temp': get_temperature(os_info),
         'disk': get_disk_usage(),
         'uptime': get_uptime(),
-        'entities': get_custom_entities(entity_ids),
+        'entities': get_custom_entities(entity_ids, entity_cache_ttl),
         'supervisor_ok': any(item is not None for item in (host_info, network_info, os_info)),
     }
+
+
+def build_page_durations(default_duration):
+    """Resolve per-page durations, falling back to the shared default."""
+    durations = {}
+    for page_name in ('summary', 'details', 'clock', 'entities', 'graph', 'alert'):
+        override = get_env_int(f'OLED_PAGE_DURATION_{page_name.upper()}', 0, 0, 300)
+        durations[page_name] = override or default_duration
+    return durations
+
+
+def get_active_pages(enabled_pages, show_alert_page, alerts, alert_page_position):
+    """Return the currently eligible pages, including conditional alert display."""
+    if show_alert_page and alerts:
+        if alert_page_position == 'back':
+            return list(enabled_pages) + ['alert']
+        return ['alert'] + list(enabled_pages)
+    return list(enabled_pages)
 
 
 def main():
@@ -482,20 +688,25 @@ def main():
     display_rotation = get_env_int('OLED_DISPLAY_ROTATION', 0, 0, 3)
     refresh_interval = get_env_int('OLED_REFRESH_INTERVAL', 1, 1, 60)
     page_duration = get_env_int('OLED_PAGE_DURATION', 10, 3, 120)
+    page_durations = build_page_durations(page_duration)
     page_order = get_env_csv('OLED_PAGE_ORDER')
     startup_delay = get_env_int('OLED_STARTUP_DELAY', 5, 0, 30)
     show_details_page = get_env_bool('OLED_SHOW_DETAILS_PAGE', True)
+    show_clock_page = get_env_bool('OLED_SHOW_CLOCK_PAGE', True)
     show_graph_page = get_env_bool('OLED_SHOW_GRAPH_PAGE', True)
     entity_ids = get_env_csv('OLED_ENTITY_IDS')
     show_alert_page = get_env_bool('OLED_SHOW_ALERT_PAGE', True)
     alert_cpu_threshold = get_env_int('OLED_ALERT_CPU_THRESHOLD', 95, 1, 100)
     alert_temp_threshold = get_env_int('OLED_ALERT_TEMP_THRESHOLD', 75, 1, 120)
     alert_disk_threshold = get_env_int('OLED_ALERT_DISK_THRESHOLD', 90, 1, 100)
+    alert_page_position = get_env_choice('OLED_ALERT_PAGE_POSITION', 'front', {'front', 'back'})
+    entity_cache_ttl = get_env_int('OLED_ENTITY_CACHE_TTL', 5, 0, 300)
+    supervisor_cache_ttl = get_env_int('OLED_SUPERVISOR_CACHE_TTL', 3, 0, 300)
     night_mode_enabled = get_env_bool('OLED_NIGHT_MODE_ENABLED', False)
     night_mode_start = get_env_clock_minutes('OLED_NIGHT_MODE_START', '22:00')
     night_mode_end = get_env_clock_minutes('OLED_NIGHT_MODE_END', '07:00')
 
-    enabled_pages = build_enabled_pages(page_order, show_details_page, show_graph_page, entity_ids)
+    enabled_pages = build_enabled_pages(page_order, show_details_page, show_clock_page, show_graph_page, entity_ids)
 
     # Display configuration
     log("Initializing I2C and OLED display")
@@ -520,9 +731,11 @@ def main():
     x = 0
     top = padding
     history = deque(maxlen=128)
-    current_page = 0
+    current_page_name = enabled_pages[0]
     last_page_switch = time.monotonic()
     last_night_mode_state = None
+    last_rendered_page_name = None
+    last_rendered_image = None
 
     # Startup message
     log("Displaying startup message")
@@ -545,18 +758,30 @@ def main():
 
             if night_mode_active:
                 last_page_switch = time.monotonic()
+                last_rendered_page_name = None
+                last_rendered_image = None
                 disp.image(image)
                 disp.show()
                 time.sleep(refresh_interval)
                 continue
 
-            if len(enabled_pages) > 1 and time.monotonic() - last_page_switch >= page_duration:
-                current_page = (current_page + 1) % len(enabled_pages)
-                last_page_switch = time.monotonic()
-                log(f"Display page changed to {enabled_pages[current_page]}")
-
-            info = get_system_info(entity_ids)
+            info = get_system_info(entity_ids, entity_cache_ttl, supervisor_cache_ttl)
             alerts = build_alerts(info, alert_cpu_threshold, alert_temp_threshold, alert_disk_threshold)
+
+            active_pages = get_active_pages(enabled_pages, show_alert_page, alerts, alert_page_position)
+            if current_page_name not in active_pages:
+                current_page_name = active_pages[0]
+                last_page_switch = time.monotonic()
+
+            current_page_duration = page_durations.get(
+                get_logical_page_name(current_page_name),
+                page_duration,
+            )
+            if len(active_pages) > 1 and time.monotonic() - last_page_switch >= current_page_duration:
+                current_index = active_pages.index(current_page_name)
+                current_page_name = active_pages[(current_index + 1) % len(active_pages)]
+                last_page_switch = time.monotonic()
+                log(f"Display page changed to {current_page_name}")
 
             try:
                 cpu_value = max(0, min(100, int(float(str(info['cpu']).strip()))))
@@ -565,29 +790,48 @@ def main():
 
             history.append(cpu_value)
 
-            page_name = enabled_pages[current_page]
+            page_name = current_page_name
+            page_image = Image.new("1", (disp.width, disp.height))
+            page_draw = ImageDraw.Draw(page_image)
 
-            if show_alert_page and alerts:
-                draw_alert_page(draw, font, disp.width, disp.height, alerts)
+            if page_name == 'alert':
+                draw_alert_page(page_draw, font, disp.width, disp.height, alerts)
             elif page_name == 'summary':
-                draw.text((x, top), fit_text(f"NAME: {info['hostname']}"), font=font, fill=255)
-                draw.text((x, top + 12), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
-                draw.text((x, top + 24), fit_text(f"CPU : {info['cpu']}% MEM: {info['mem']}%"), font=font, fill=255)
-                draw.text((x, top + 36), fit_text(f"TMP : {info['temp']} DISK:{info['disk']}%"), font=font, fill=255)
-                draw.text((x, top + 48), fit_text(f"UP  : {info['uptime']}"), font=font, fill=255)
+                page_draw.text((x, top), fit_text(f"NAME: {info['hostname']}"), font=font, fill=255)
+                page_draw.text((x, top + 12), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
+                page_draw.text((x, top + 24), fit_text(f"CPU : {info['cpu']}% MEM: {info['mem']}%"), font=font, fill=255)
+                page_draw.text((x, top + 36), fit_text(f"TMP : {info['temp']} DISK:{info['disk']}%"), font=font, fill=255)
+                page_draw.text((x, top + 48), fit_text(f"UP  : {info['uptime']}"), font=font, fill=255)
             elif page_name == 'details':
-                draw.text((x, top), fit_text("SYSTEM DETAILS"), font=font, fill=255)
-                draw.text((x, top + 12), fit_text(f"HOST: {info['hostname']}"), font=font, fill=255)
-                draw.text((x, top + 24), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
-                draw.text((x, top + 36), fit_text(f"TEMP: {info['temp']}"), font=font, fill=255)
-                draw.text((x, top + 48), fit_text(f"DISK: {info['disk']}% UP:{info['uptime']}"), font=font, fill=255)
-            elif page_name == 'entities':
-                draw_entities_page(draw, font, info['entities'])
+                page_draw.text((x, top), fit_text("SYSTEM DETAILS"), font=font, fill=255)
+                page_draw.text((x, top + 12), fit_text(f"HOST: {info['hostname']}"), font=font, fill=255)
+                page_draw.text((x, top + 24), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
+                page_draw.text((x, top + 36), fit_text(f"TEMP: {info['temp']}"), font=font, fill=255)
+                page_draw.text((x, top + 48), fit_text(f"DISK: {info['disk']}% UP:{info['uptime']}"), font=font, fill=255)
+            elif page_name == 'clock':
+                draw_clock_page(page_draw, font, disp.width, info['uptime'])
+            elif page_name.startswith('entities:'):
+                entity_page = page_name.split(':', 1)[1]
+                page_number_text, page_count_text = entity_page.split('/', 1)
+                draw_entities_page(
+                    page_draw,
+                    font,
+                    info['entities'],
+                    int(page_number_text),
+                    int(page_count_text),
+                )
             else:
-                draw_cpu_graph(draw, history, disp.width, disp.height, info['cpu'], info['mem'], info['temp'])
+                draw_cpu_graph(page_draw, history, disp.width, disp.height, info['cpu'], info['mem'], info['temp'])
 
-            disp.image(image)
-            disp.show()
+            if page_name != last_rendered_page_name:
+                animate_page_transition(disp, last_rendered_image, page_image)
+            else:
+                disp.image(page_image)
+                disp.show()
+
+            image = page_image
+            last_rendered_image = page_image.copy()
+            last_rendered_page_name = page_name
 
             time.sleep(refresh_interval)
 
