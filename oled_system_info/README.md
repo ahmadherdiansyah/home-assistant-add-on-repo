@@ -177,6 +177,14 @@ Before starting, configure your Raspberry Pi model:
 
 See the **Configuration** tab for the complete list.
 
+**Optional display settings:**
+- `display_rotation`: Screen rotation (`0`, `1`, `2`, `3`)
+- `refresh_interval`: Seconds between display refreshes
+- `page_duration`: Seconds before the display switches pages
+- `startup_delay`: Seconds to keep the startup screen visible
+- `show_details_page`: Enable or disable the temperature/disk/uptime page
+- `show_graph_page`: Enable or disable the CPU graph page
+
 ### 4. Start the Add-on
 
 - Go to the **Info** tab
@@ -193,8 +201,10 @@ The OLED displays:
 - Hostname and IP address
 - CPU usage percentage
 - Memory usage percentage
+- Temperature, disk usage, and uptime
+- CPU history graph
 
-The display refreshes system information automatically once per second.
+The display refreshes automatically based on `refresh_interval` and rotates pages based on `page_duration`.
 
 ## Troubleshooting
 

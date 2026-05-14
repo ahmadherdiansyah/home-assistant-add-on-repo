@@ -1,6 +1,6 @@
 name: "OLED System Info Display"
 description: "Displays system information on an SSD1306 OLED screen"
-version: "2.1.0"
+version: "2.2.0"
 slug: "oled_system_info"
 init: false
 devices:
@@ -13,9 +13,21 @@ privileged:
 options:
   board_type: "RASPBERRY_PI_4B"
   chip_type: "BCM2711"
+  display_rotation: 0
+  refresh_interval: 1
+  page_duration: 10
+  startup_delay: 5
+  show_details_page: true
+  show_graph_page: true
 schema:
   board_type: "list(RASPBERRY_PI_ZERO|RASPBERRY_PI_ZERO_W|RASPBERRY_PI_2B|RASPBERRY_PI_3B|RASPBERRY_PI_3B_PLUS|RASPBERRY_PI_3A_PLUS|RASPBERRY_PI_4B|RASPBERRY_PI_5|RASPBERRY_PI_CM4)"
   chip_type: "list(BCM2835|BCM2836|BCM2837|BCM2711|BCM2712)"
+  display_rotation: "list(0|1|2|3)"
+  refresh_interval: "int(1,60)"
+  page_duration: "int(3,120)"
+  startup_delay: "int(0,30)"
+  show_details_page: "bool"
+  show_graph_page: "bool"
 apparmor: false
 hassio_api: true
 image: "ghcr.io/ahmadherdiansyah/{arch}-oled-system-info"

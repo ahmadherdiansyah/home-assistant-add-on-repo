@@ -16,6 +16,29 @@ import psutil
 import requests
 
 
+def get_env_int(name, default, minimum=None, maximum=None):
+    """Read an integer from the environment with bounds."""
+    value = os.getenv(name, str(default))
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+
+    if minimum is not None:
+        parsed = max(minimum, parsed)
+    if maximum is not None:
+        parsed = min(maximum, parsed)
+    return parsed
+
+
+def get_env_bool(name, default):
+    """Read a boolean from the environment."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 def log(message):
     """Print log message with timestamp"""
     timestamp = time.strftime("%H:%M:%S")
@@ -263,14 +286,31 @@ def get_system_info():
 def main():
     log("Initializing OLED System Info Display")
 
+    display_rotation = get_env_int('OLED_DISPLAY_ROTATION', 0, 0, 3)
+    refresh_interval = get_env_int('OLED_REFRESH_INTERVAL', 1, 1, 60)
+    page_duration = get_env_int('OLED_PAGE_DURATION', 10, 3, 120)
+    startup_delay = get_env_int('OLED_STARTUP_DELAY', 5, 0, 30)
+    show_details_page = get_env_bool('OLED_SHOW_DETAILS_PAGE', True)
+    show_graph_page = get_env_bool('OLED_SHOW_GRAPH_PAGE', True)
+
+    enabled_pages = ['summary']
+    if show_details_page:
+        enabled_pages.append('details')
+    if show_graph_page:
+        enabled_pages.append('graph')
+
     # Display configuration
     log("Initializing I2C and OLED display")
     i2c = I2CAdapter(1)
     disp = adafruit_ssd1306.SSD1306_I2C(128, 32, i2c)
-    disp.rotation = 0
+    disp.rotation = display_rotation
     disp.fill(0)
     disp.show()
-    log("OLED display initialized")
+    log(
+        "OLED display initialized "
+        f"(rotation={display_rotation}, refresh={refresh_interval}s, "
+        f"page_duration={page_duration}s, pages={','.join(enabled_pages)})"
+    )
     
     # Drawing setup
     image = Image.new("1", (disp.width, disp.height))
@@ -284,7 +324,6 @@ def main():
     history = deque(maxlen=128)
     current_page = 0
     last_page_switch = time.monotonic()
-    page_duration = 10
 
     # Startup message
     log("Displaying startup message")
@@ -294,7 +333,7 @@ def main():
     draw.text((x, top+24), "--------------------", font=font, fill=255)
     disp.image(image)
     disp.show()
-    time.sleep(5)
+    time.sleep(startup_delay)
     
     log("Entering main loop")
 
@@ -302,10 +341,10 @@ def main():
         while True:
             draw.rectangle((0, 0, disp.width, disp.height), outline=0, fill=0)
 
-            if time.monotonic() - last_page_switch >= page_duration:
-                current_page = (current_page + 1) % 3
+            if len(enabled_pages) > 1 and time.monotonic() - last_page_switch >= page_duration:
+                current_page = (current_page + 1) % len(enabled_pages)
                 last_page_switch = time.monotonic()
-                log(f"Display page changed to {current_page + 1}")
+                log(f"Display page changed to {enabled_pages[current_page]}")
 
             info = get_system_info()
 
@@ -316,11 +355,13 @@ def main():
 
             history.append(cpu_value)
 
-            if current_page == 0:
+            page_name = enabled_pages[current_page]
+
+            if page_name == 'summary':
                 draw.text((x, top), fit_text(f"NAME: {info['hostname']}"), font=font, fill=255)
                 draw.text((x, top + 12), fit_text(f"IP  : {info['ip']}"), font=font, fill=255)
                 draw.text((x, top + 24), fit_text(f"CPU : {info['cpu']}% MEM: {info['mem']}%"), font=font, fill=255)
-            elif current_page == 1:
+            elif page_name == 'details':
                 draw.text((x, top), fit_text(f"TEMP: {info['temp']} DISK:{info['disk']}%"), font=font, fill=255)
                 draw.text((x, top + 12), fit_text(f"UP  : {info['uptime']}"), font=font, fill=255)
                 draw.text((x, top + 24), fit_text(f"HOST: {info['hostname']}"), font=font, fill=255)
@@ -330,7 +371,7 @@ def main():
             disp.image(image)
             disp.show()
 
-            time.sleep(1)
+            time.sleep(refresh_interval)
 
     except KeyboardInterrupt:
         log("Received keyboard interrupt")

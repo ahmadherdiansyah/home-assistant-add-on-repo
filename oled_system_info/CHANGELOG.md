@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0] - 2026-05-14
+
+### Added
+- Configurable display rotation
+- Configurable refresh interval, page duration, and startup delay
+- Optional toggles for the details page and CPU graph page
+
 ## [2.1.0] - 2026-05-14
 
 ### Added

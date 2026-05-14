@@ -295,6 +295,12 @@ You must configure your Raspberry Pi model before starting the add-on.
 ```yaml
 board_type: RASPBERRY_PI_4B
 chip_type: BCM2711
+display_rotation: 0
+refresh_interval: 1
+page_duration: 10
+startup_delay: 5
+show_details_page: true
+show_graph_page: true
 ```
 
 **Example for Raspberry Pi Zero W:**
@@ -310,8 +316,13 @@ chip_type: BCM2835
 ### Display Behavior
 
 **On Startup:**
-1. Display shows "Infoscreen Started" for ~5 seconds
+1. Display shows "Infoscreen Started" for the configured `startup_delay`
 2. Display begins refreshing system information automatically
+
+**Page Rotation:**
+1. The summary page is always enabled
+2. Optional details and graph pages can be enabled or disabled in the add-on configuration
+3. The display switches pages using the configured `page_duration`
 
 ### System Information Shown
 
@@ -325,6 +336,23 @@ CPU : 25% | MEM: 45%
 - **IP**: Current IP address
 - **CPU**: Current CPU usage percentage
 - **MEM**: Current memory usage percentage
+
+Additional optional pages can show:
+- Temperature
+- Disk usage
+- Uptime
+- CPU history graph
+
+### Display Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `display_rotation` | `0` | Rotates the OLED output. Use `2` for 180-degree mounting. |
+| `refresh_interval` | `1` | Refresh interval in seconds. |
+| `page_duration` | `10` | How long each page stays visible before rotating. |
+| `startup_delay` | `5` | How long the startup message remains on screen. |
+| `show_details_page` | `true` | Enables the temperature, disk, and uptime page. |
+| `show_graph_page` | `true` | Enables the CPU history graph page. |
 
 ---
 
